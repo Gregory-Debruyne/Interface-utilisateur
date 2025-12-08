@@ -1,15 +1,20 @@
 from nicegui import ui
 
 Exemple_bouton = 'w-[200px] h-[55px] text-lg'
-temps_c= 0
+temps_c = 0
+mode = "Aucun"
+# On déclare les labels globaux pour pouvoir les modifier dans les fonctions
+mode_label = None
+value_label = None
 
-def on_click_bouton(numero: int):
+def on_click_bouton(numero: str):
+    global mode, mode_label
+    mode = numero
     ui.notify(f'{numero} cliqué !')
-    info.set_text(f'Mode actuel : {numero}')
+    print(f'Mode changé : {mode}')
+    # Mise à jour du label d'affichage du mode
+    mode_label.set_text(f'Mode actuel : {mode}')
 
-
-    
-    
 
 
 def increment():
@@ -27,10 +32,13 @@ def decrement():
 # Mise en page plein écran avec centrage du contenu
 with ui.row().classes('w-full h-screen'):
     with ui.column().classes('absolute left-[50%] top-[35%] -translate-x-1/2 -translate-y-1/2'):
+
         # Affichage du mode actuel
-        
-        ui.label(f'Mode actuel : {numero}').classes('text-xl')
+
+        mode_label = ui.label(f'Mode actuel : {mode}').classes('text-xl')
+
         # Première rangée de 2 boutons
+
         with ui.row().classes():
             ui.button('Vidange', on_click=lambda: on_click_bouton("Vidange")).classes(Exemple_bouton)
             ui.button('Séparation', on_click=lambda: on_click_bouton("Séparation")).classes(Exemple_bouton)
