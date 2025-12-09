@@ -2,7 +2,7 @@ from nicegui import ui
 import paho.mqtt.client as mqtt
 
 # ------------ CONFIG MQTT ------------
-MQTT_BROKER = "172.11.1.35"      # <<< MET ICI L'IP DE TON RASPBERRY
+MQTT_BROKER = "192.168.1.47"     # Adresse de chez moi 
 MQTT_PORT = 1883
 MQTT_TOPIC_CMD = "machinesight/ordre"
 MQTT_TOPIC_STATUS = "machinesight/status"
