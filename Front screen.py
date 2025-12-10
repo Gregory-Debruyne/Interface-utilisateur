@@ -41,13 +41,15 @@ mode = "Aucun"
 mode_label = None
 value_label = None
 temps_choisi = 0
+
+
 def publier(message: dict):
     """Envoie un message JSON au Raspberry via MQTT."""
     client.publish(MQTT_TOPIC, json.dumps(message))
     print("Publié sur MQTT :", message)
 
 
-def on_click_bouton(numero: str):
+def Pression_boutton(numero: str):
     global mode, mode_label
     mode = numero
     print(f'Mode changé : {mode}')
@@ -100,23 +102,23 @@ with ui.row().classes('w-full h-screen'):
         # Première rangée de 2 boutons
 
         with ui.row().classes():
-            ui.button('Vidange', on_click=lambda: on_click_bouton("vidange")).classes(Exemple_bouton)
-            ui.button('Séparation', on_click=lambda: (on_click_bouton("separation"), valeur_temps(30))).classes(Exemple_bouton)
+            ui.button('Vidange', on_click=lambda: Pression_boutton("vidange")).classes(Exemple_bouton)
+            ui.button('Séparation', on_click=lambda: (Pression_boutton("separation"), valeur_temps(30))).classes(Exemple_bouton)
            
 
         # Deuxième rangée de 2 boutons
         with ui.row().classes():
-            ui.button('Chaos', on_click=lambda: on_click_bouton("ko")).classes(Exemple_bouton)
-            ui.button('Rassemblement', on_click=lambda: (on_click_bouton("rassemblement"), valeur_temps(30))).classes(Exemple_bouton)
+            ui.button('Chaos', on_click=lambda: Pression_boutton("ko")).classes(Exemple_bouton)
+            ui.button('Rassemblement', on_click=lambda: (Pression_boutton("rassemblement"), valeur_temps(30))).classes(Exemple_bouton)
         
 
         # boutons de maintenance en haut à droite
     with ui.row().classes('absolute left-[90%] top-[25%] -translate-x-1/2 -translate-y-1/2 gap-5'):
         with ui.row().classes():
-            ui.button('maintenance', on_click=lambda: on_click_bouton("maintenance")).classes(Exemple_bouton)
-            ui.button('reset', on_click=lambda: on_click_bouton("reset")).classes(Exemple_bouton)
-            ui.button('ouverture trappe', on_click=lambda: on_click_bouton("ouverture trappe")).classes(Exemple_bouton)
-            ui.button('LED ON', on_click=lambda: on_click_bouton("LED ON")).classes(Exemple_bouton)
+            ui.button('maintenance', on_click=lambda: Pression_boutton("maintenance")).classes(Exemple_bouton)
+            ui.button('reset', on_click=lambda: Pression_boutton("reset")).classes(Exemple_bouton)
+            ui.button('ouverture trappe', on_click=lambda: Pression_boutton("ouverture trappe")).classes(Exemple_bouton)
+            ui.button('LED ON', on_click=lambda: Pression_boutton("LED ON")).classes(Exemple_bouton)
 
     with ui.column().classes('absolute left-[50%] top-[70%] -translate-x-1/2 -translate-y-1/2'):
         # Zone d'affichage du chiffre et Boutons + et -
