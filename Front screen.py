@@ -50,10 +50,17 @@ Servo_led_on = None
 Servo_led_off = None
 Servo_indicator = None
 Servo_label = None
+Maintenance_on = False
+Maintenance_led_on = None
+Maintenance_led_off = None
+Maintenance_indicator = None
+Maintenance_label = None
+
+
 # ------------------ FONCTIONS UI ------------------
      
 def update_led_ui():
-    """Met à jour boutons + LED visuelle selon l'état led_on."""
+    # Met à jour boutons + LED visuelle selon l'état led_on.
     global btn_led_on, btn_led_off, led_indicator, led_label, led_on
 
     if led_on:
@@ -94,11 +101,24 @@ def toggle_Servo(force: bool | None = None):
         global Servo_on
         Servo_on = (not Servo_on) if force is None else force
         update_Servo_ui()
-        publier({
-            "action": "Servo",
-            "state": Servo_on})
+        if Servo_on:
+            client.publish(MQTT_TOPIC, json.dumps("Servo_ON"))
+        else:
+            client.publish(MQTT_TOPIC, json.dumps("Servo_OFF"))
     if mode != "maintenance":
         ui.notify('Activation Servo uniquement en mode maintenance')
+def update_led_ui():
+    """Met à jour boutons + LED visuelle selon l'état led_on."""
+    global _led_on, btn_led_off, led_indicator, led_label, led_on
+
+    if led_on:
+        btn_led_on.visible = False
+        btn_led_off.visible = True
+        led_indicator.classes('bg-green-500', remove='bg-gray-400')
+    else:
+        btn_led_on.visible = True
+        btn_led_off.visible = False
+        led_indicator.classes('bg-gray-400', remove='bg-green-500')
 def sortir_mode_maintenance():
     global mode, led_on, Servo_on
     if mode == "maintenance":
@@ -108,12 +128,11 @@ def sortir_mode_maintenance():
         update_Servo_ui()
         ui.notify('Sortie du mode maintenance : LED et Servo désactivés.')
         publier({
-            "action": "led",
-            "state": led_on
-    })
+            "action": "led_off"
+            })
         publier({
-            "action": "Servo",
-            "state": Servo_on})
+            "action": "Servo_OFF",
+            })
 
 
 def publier(message: dict):
