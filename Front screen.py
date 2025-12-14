@@ -28,19 +28,92 @@ client.on_connect = on_connect
 client.on_message = on_message
 
 # Connexion au broker du Raspberry Pi
-client.connect(MQTT_BROKER, MQTT_PORT, 60)
 client.loop_start()  # boucle réseau MQTT en arrière-plan
 
 
 # ------------------ VARIABLES UI ------------------
 
-Exemple_bouton = 'w-[175px] h-[55px] text-lg'
+Exemple_bouton = 'w-[175px] h-[55px] text-xl rounded-lg'
 bouton_rond = 'w-[60px] h-[60px] text-2xl rounded-full'
 temps_c = 0
 mode = "Aucun"
 mode_label = None
 value_label = None
 temps_choisi = 0
+led_on = False
+btn_led_on = None
+btn_led_off = None
+led_indicator = None
+led_label = None
+Servo_on = False
+Servo_led_on = None
+Servo_led_off = None
+Servo_indicator = None
+Servo_label = None
+# ------------------ FONCTIONS UI ------------------
+     
+def update_led_ui():
+    """Met à jour boutons + LED visuelle selon l'état led_on."""
+    global btn_led_on, btn_led_off, led_indicator, led_label, led_on
+
+    if led_on:
+        btn_led_on.visible = False
+        btn_led_off.visible = True
+        led_indicator.classes('bg-green-500', remove='bg-gray-400')
+    else:
+        btn_led_on.visible = True
+        btn_led_off.visible = False
+        led_indicator.classes('bg-gray-400', remove='bg-green-500')
+
+def toggle_led(force: bool | None = None):
+    if mode == "maintenance":
+        global led_on
+        led_on = (not led_on) if force is None else force
+        update_led_ui()
+        publier({
+            "action": "led",
+            "state": led_on
+    })
+    if mode != "maintenance":
+        ui.notify('Activation LED uniquement en mode maintenance')
+
+def update_Servo_ui():
+    global btn_Servo_on, btn_Servo_off, Servo_indicator, Servo_on
+
+    if Servo_on:
+        btn_Servo_on.visible = False
+        btn_Servo_off.visible = True
+        Servo_indicator.classes('bg-green-500', remove='bg-gray-400')
+    else:
+        btn_Servo_on.visible = True
+        btn_Servo_off.visible = False
+        Servo_indicator.classes('bg-gray-400', remove='bg-green-500')
+
+def toggle_Servo(force: bool | None = None):
+    if mode == "maintenance":
+        global Servo_on
+        Servo_on = (not Servo_on) if force is None else force
+        update_Servo_ui()
+        publier({
+            "action": "Servo",
+            "state": Servo_on})
+    if mode != "maintenance":
+        ui.notify('Activation Servo uniquement en mode maintenance')
+def sortir_mode_maintenance():
+    global mode, led_on, Servo_on
+    if mode == "maintenance":
+        led_on = False
+        update_led_ui()
+        Servo_on = False
+        update_Servo_ui()
+        ui.notify('Sortie du mode maintenance : LED et Servo désactivés.')
+        publier({
+            "action": "led",
+            "state": led_on
+    })
+        publier({
+            "action": "Servo",
+            "state": Servo_on})
 
 
 def publier(message: dict):
@@ -51,6 +124,7 @@ def publier(message: dict):
 
 def Pression_boutton(numero: str):
     global mode, mode_label
+    sortir_mode_maintenance()
     mode = numero
     print(f'Mode changé : {mode}')
     # Mise à jour du label d'affichage du mode
@@ -66,6 +140,7 @@ def start ():
         "durée": temps_c  
          })
 def stop ():
+    global mode
     ui.notify('Processus arrêté !')
     print('Processus arrêté.')
     mode = "Aucun"
@@ -113,12 +188,27 @@ with ui.row().classes('w-full h-screen'):
         
 
         # boutons de maintenance en haut à droite
-    with ui.row().classes('absolute left-[90%] top-[25%] -translate-x-1/2 -translate-y-1/2 gap-5'):
+    with ui.row().classes('absolute left-[90%] top-[40%] -translate-x-1/2 -translate-y-1/2 gap-5'):
         with ui.row().classes():
             ui.button('maintenance', on_click=lambda: Pression_boutton("maintenance")).classes(Exemple_bouton)
             ui.button('reset', on_click=lambda: Pression_boutton("reset")).classes(Exemple_bouton)
-            ui.button('ouverture trappe', on_click=lambda: Pression_boutton("ouverture trappe")).classes(Exemple_bouton)
-            ui.button('LED ON', on_click=lambda: Pression_boutton("LED ON")).classes(Exemple_bouton)
+            btn_Servo_on = ui.button('Servo ouvert', on_click=lambda: toggle_Servo(True))\
+                    .classes(Exemple_bouton)
+            btn_Servo_off = ui.button('Servo fermé', on_click=lambda: toggle_Servo(False))\
+                    .classes(Exemple_bouton)
+            # indicateur (petit rond) sous le bouton
+            Servo_indicator = ui.element('div').classes('mt-2 w-16 h-16 rounded-full bg-gray-400')
+            update_Servo_ui()
+
+            btn_led_on = ui.button('LED ON', on_click=lambda: toggle_led(True))\
+                    .classes(Exemple_bouton)
+            btn_led_off = ui.button('LED OFF', on_click=lambda: toggle_led(False))\
+                    .classes(Exemple_bouton)
+
+            # indicateur (petit rond) sous le bouton
+            led_indicator = ui.element('div').classes('mt-2 w-16 h-16 rounded-full bg-gray-400')
+
+            update_led_ui()
 
     with ui.column().classes('absolute left-[50%] top-[70%] -translate-x-1/2 -translate-y-1/2'):
         # Zone d'affichage du chiffre et Boutons + et -
