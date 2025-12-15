@@ -7,30 +7,35 @@ MQTT_PORT = 1883
 MQTT_TOPIC_CMD = "machinesight/ordre"
 MQTT_TOPIC_STATUS = "machinesight/status"
 
-client = mqtt.Client()
+# (Optionnel) retire le warning "Callback API v1 deprecated" si dispo
+# Sinon, laisse client = mqtt.Client()
+try:
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+except Exception:
+    client = mqtt.Client()
 
 last_status_label = None
 log_area = None
 
+# On stocke le dernier message reçu ici (thread MQTT -> OK)
+last_status_payload = None
+pending_notif = None
+
 # ------------ FONCTIONS MQTT ------------
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc, properties=None):
     print("MQTT connecté, code retour :", rc)
     client.subscribe(MQTT_TOPIC_STATUS)
 
+
 def on_message(client, userdata, msg):
+    global last_status_payload, pending_notif
     payload = msg.payload.decode()
-    print(f"Message reçu sur {msg.topic} : {payload}")
+    # print(f"Message reçu sur {msg.topic} : {payload}")
 
-    def update_ui():
-        last_status_label.text = payload
-        if log_area.value:
-            log_area.value += "\n" + payload
-        else:
-            log_area.value = payload
-        ui.notify(f"Statut: {payload}", timeout=2)
-
-    ui.call_from_thread(update_ui)
+    if msg.topic == MQTT_TOPIC_STATUS:
+        last_status_payload = payload
+        pending_notif = payload  # optionnel: déclencher une notif côté UI
 
 client.on_connect = on_connect
 client.on_message = on_message
@@ -39,15 +44,22 @@ client.loop_start()
 
 # ------------ UI ------------
 
-VIBRATION_MODES = {"vidange", "separation", "rassemblement", "chaos"}
+VIBRATION_MODES = {"vidange", "separation", "rassemblement", "ko"}
+
+def afficher_table_occupee():
+    message = "la table est occupée à vibrer"
+    if last_status_label:
+        last_status_label.text = message
+    if log_area:
+        log_area.value = (log_area.value + "\n" if log_area.value else "") + message
+    ui.notify(message, timeout=3)
 
 def afficher_table_prete():
-    message = "la table est de nouveau prête à vibrer"
-    last_status_label.text = message
-    if log_area.value:
-        log_area.value += "\n" + message
-    else:
-        log_area.value = message
+    message = "la table est prête à vibrer"
+    if last_status_label:
+        last_status_label.text = message
+    if log_area:
+        log_area.value = (log_area.value + "\n" if log_area.value else "") + message
     ui.notify(message, timeout=3)
 
 def envoyer_commande(cmd: str):
@@ -56,9 +68,33 @@ def envoyer_commande(cmd: str):
     client.publish(MQTT_TOPIC_CMD, cmd)
     ui.notify(f"Envoyé : {cmd}", timeout=1.5)
 
+    # ---- Gestion délai avant vibration ----
+    if cmd in VIBRATION_MODES:
+        ui.timer(0.1, afficher_table_occupee, once=True)
+
     # ---- Gestion délai après vibration ----
     if cmd in VIBRATION_MODES:
-        ui.timer(7, afficher_table_prete, once=True)
+        ui.timer(10, afficher_table_prete, once=True)
+
+def refresh_status_from_mqtt():
+    """Tourne dans le thread UI (safe) et applique les updates reçues via MQTT."""
+    global last_status_payload, pending_notif
+
+    if last_status_payload is None:
+        return
+
+    payload = last_status_payload
+    last_status_payload = None  # on consomme l'update
+
+    if last_status_label:
+        last_status_label.text = payload
+
+    if log_area:
+        log_area.value = (log_area.value + "\n" if log_area.value else "") + payload
+
+    if pending_notif:
+        ui.notify(f"Statut: {pending_notif}", timeout=2)
+        pending_notif = None
 
 # ---------- STYLES ----------
 BTN_WHITE = (
@@ -89,7 +125,7 @@ with ui.column().classes("w-screen min-h-screen bg-black text-white items-center
             ui.button("Vidange", on_click=lambda: envoyer_commande("vidange")).classes(BTN_WHITE)
             ui.button("Séparation", on_click=lambda: envoyer_commande("separation")).classes(BTN_WHITE)
             ui.button("Rassemblement", on_click=lambda: envoyer_commande("rassemblement")).classes(BTN_WHITE)
-            ui.button("Chaos", on_click=lambda: envoyer_commande("chaos")).classes(BTN_WHITE)
+            ui.button("Chaos", on_click=lambda: envoyer_commande("ko")).classes(BTN_WHITE)
 
         ui.element("div").classes("h-6")
 
@@ -116,5 +152,8 @@ with ui.column().classes("w-screen min-h-screen bg-black text-white items-center
 
         with ui.row().classes("w-full justify-end mt-3"):
             ui.button("Clear log", on_click=lambda: setattr(log_area, "value", "")).classes(BTN_WHITE)
+
+# Timer UI: on applique les messages MQTT ici (thread-safe)
+ui.timer(0.2, refresh_status_from_mqtt)
 
 ui.run()

@@ -1,108 +1,257 @@
 from nicegui import ui
+import json
+import time
 import paho.mqtt.client as mqtt
 
-# ------------ CONFIG MQTT ------------
-MQTT_BROKER = "172.11.1.35"      # IP du Raspberry
+# ------------------ CONFIG MQTT ------------------
+
+MQTT_BROKER = "172.11.1.35"
 MQTT_PORT = 1883
-MQTT_TOPIC_CMD = "machinesight/ordre"
+MQTT_TOPIC = "machinesight/ordre"
+client = mqtt.Client()
+client.connect(MQTT_BROKER, MQTT_PORT, 60)
 MQTT_TOPIC_STATUS = "machinesight/status"
 
-client = mqtt.Client()
-
-last_status_label = None
-log_area = None
-
-# ------------ FONCTIONS MQTT ------------
 
 def on_connect(client, userdata, flags, rc):
     print("MQTT connecté, code retour :", rc)
+    # Si tu veux recevoir des infos du Pi:
     client.subscribe(MQTT_TOPIC_STATUS)
 
 def on_message(client, userdata, msg):
     payload = msg.payload.decode()
     print(f"Message reçu sur {msg.topic} : {payload}")
-
-    def update_ui():
-        # badge "dernier statut"
-        last_status_label.text = payload
-
-        # log
-        if log_area.value:
-            log_area.value += "\n" + payload
-        else:
-            log_area.value = payload
-
-        ui.notify(f"Statut: {payload}", timeout=2)
-
-    ui.call_from_thread(update_ui)
+    # Tu peux aussi afficher dans l'interface:
+    ui.notify(f"MQTT: {payload}")
 
 client.on_connect = on_connect
 client.on_message = on_message
-client.connect(MQTT_BROKER, MQTT_PORT, 60)
-client.loop_start()
 
-# ------------ UI ------------
+# Connexion au broker du Raspberry Pi
+client.loop_start()  # boucle réseau MQTT en arrière-plan
 
-def envoyer_commande(cmd: str):
-    cmd = cmd.strip().lower()
-    print(f"Envoi commande : {cmd}")
-    client.publish(MQTT_TOPIC_CMD, cmd)
-    ui.notify(f"Envoyé : {cmd}", timeout=1.5)
 
-# Styles (Tailwind via NiceGUI)
-BTN_BASE = "px-6 py-3 rounded-xl font-semibold shadow-lg transition-all duration-200"
-BTN_PRIMARY = f"{BTN_BASE} bg-white text-black hover:bg-gray-200"
-BTN_DARK = f"{BTN_BASE} bg-zinc-900 text-white border border-zinc-700 hover:bg-zinc-800"
-BTN_ALERT = f"{BTN_BASE} bg-red-600 text-white hover:bg-red-500"
-BTN_GLOW = "hover:shadow-[0_0_18px_rgba(255,255,255,0.15)]"
+# ------------------ VARIABLES UI ------------------
 
-CARD = "w-[900px] max-w-[94vw] bg-zinc-950/60 border border-zinc-800 rounded-2xl p-6 shadow-2xl"
-TITLE = "text-3xl font-bold tracking-wide"
-SUB = "text-sm text-zinc-400"
-SECTION = "text-xs uppercase tracking-widest text-zinc-500"
-DIVIDER = "w-full border-t border-zinc-800 my-6"
+Exemple_bouton = 'w-[175px] h-[55px] text-xl rounded-lg'
+bouton_rond = 'w-[60px] h-[60px] text-2xl rounded-full'
+temps_c = 0
+mode = "Aucun"
+mode_label = None
+value_label = None
+temps_choisi = 0
+led_on = False
+btn_led_on = None
+btn_led_off = None
+led_indicator = None
+led_label = None
+Servo_on = False
+Servo_led_on = None
+Servo_led_off = None
+Servo_indicator = None
+Servo_label = None
+Maintenance_on = False
+Maintenance_led_on = None
+Maintenance_led_off = None
+Maintenance_indicator = None
+Maintenance_label = None
 
-with ui.column().classes("w-screen min-h-screen bg-black text-white items-center justify-center p-6"):
-    # Card principale
-    with ui.column().classes(CARD):
-        ui.label("MachineSight Control").classes(TITLE)
-        ui.label("Pilotage MQTT : vibration, trappe, LED.").classes(SUB)
 
-        ui.element("div").classes(DIVIDER)
+# ------------------ FONCTIONS UI ------------------
+     
+def update_led_ui():
+    # Met à jour boutons + LED visuelle selon l'état led_on.
+    global btn_led_on, btn_led_off, led_indicator, led_label, led_on
 
-        # --- Ligne 1 : vibration ---
-        ui.label("Vibration").classes(SECTION)
-        with ui.row().classes("w-full gap-4 flex-wrap"):
-            ui.button("Vidange", on_click=lambda: envoyer_commande("vidange")).classes(f"{BTN_PRIMARY} {BTN_GLOW}")
-            ui.button("Séparation", on_click=lambda: envoyer_commande("separation")).classes(f"{BTN_PRIMARY} {BTN_GLOW}")
-            ui.button("Rassemblement", on_click=lambda: envoyer_commande("rassemblement")).classes(f"{BTN_PRIMARY} {BTN_GLOW}")
-            ui.button("KO", on_click=lambda: envoyer_commande("ko")).classes(f"{BTN_ALERT} {BTN_GLOW}")
+    if led_on:
+        btn_led_on.visible = False
+        btn_led_off.visible = True
+        led_indicator.classes('bg-green-500', remove='bg-gray-400')
+    else:
+        btn_led_on.visible = True
+        btn_led_off.visible = False
+        led_indicator.classes('bg-gray-400', remove='bg-green-500')
 
-        ui.element("div").classes("h-6")
+def toggle_led(force: bool | None = None):
+    if mode == "maintenance":
+        global led_on
+        led_on = (not led_on) if force is None else force
+        update_led_ui()
+        publier({
+            "action": "led",
+            "state": led_on
+    })
+    if mode != "maintenance":
+        ui.notify('Activation LED uniquement en mode maintenance')
 
-        # --- Ligne 2 : actuateurs ---
-        ui.label("Actuateurs").classes(SECTION)
-        with ui.row().classes("w-full gap-4 flex-wrap"):
-            ui.button("LED ON", on_click=lambda: envoyer_commande("led_on")).classes(f"{BTN_DARK} {BTN_GLOW}")
-            ui.button("LED OFF", on_click=lambda: envoyer_commande("led_off")).classes(f"{BTN_DARK} {BTN_GLOW}")
-            ui.button("Ouvrir trappe", on_click=lambda: envoyer_commande("servo_on")).classes(f"{BTN_DARK} {BTN_GLOW}")
-            ui.button("Fermer trappe", on_click=lambda: envoyer_commande("servo_off")).classes(f"{BTN_DARK} {BTN_GLOW}")
+def update_Servo_ui():
+    global btn_Servo_on, btn_Servo_off, Servo_indicator, Servo_on
 
-        ui.element("div").classes(DIVIDER)
+    if Servo_on:
+        btn_Servo_on.visible = False
+        btn_Servo_off.visible = True
+        Servo_indicator.classes('bg-green-500', remove='bg-gray-400')
+    else:
+        btn_Servo_on.visible = True
+        btn_Servo_off.visible = False
+        Servo_indicator.classes('bg-gray-400', remove='bg-green-500')
 
-        # --- Statut + log (sans le texte “Messages d'état reçus”) ---
-        with ui.row().classes("w-full items-center justify-between gap-4 flex-wrap"):
-            ui.label("Dernier statut").classes(SECTION)
-            last_status_label = ui.label("-").classes(
-                "px-3 py-1 rounded-full bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm"
-            )
+def toggle_Servo(force: bool | None = None):
+    if mode == "maintenance":
+        global Servo_on
+        Servo_on = (not Servo_on) if force is None else force
+        update_Servo_ui()
+        if Servo_on:
+            client.publish(MQTT_TOPIC, json.dumps("Servo_ON"))
+        else:
+            client.publish(MQTT_TOPIC, json.dumps("Servo_OFF"))
+    if mode != "maintenance":
+        ui.notify('Activation Servo uniquement en mode maintenance')
+def update_led_ui():
+    """Met à jour boutons + LED visuelle selon l'état led_on."""
+    global _led_on, btn_led_off, led_indicator, led_label, led_on
 
-        log_area = ui.textarea().props("readonly").classes(
-            "w-full h-[180px] bg-black text-white border border-zinc-700 rounded-xl p-3 text-sm"
-        )
+    if led_on:
+        btn_led_on.visible = False
+        btn_led_off.visible = True
+        led_indicator.classes('bg-green-500', remove='bg-gray-400')
+    else:
+        btn_led_on.visible = True
+        btn_led_off.visible = False
+        led_indicator.classes('bg-gray-400', remove='bg-green-500')
+def sortir_mode_maintenance():
+    global mode, led_on, Servo_on
+    if mode == "maintenance":
+        led_on = False
+        update_led_ui()
+        Servo_on = False
+        update_Servo_ui()
+        ui.notify('Sortie du mode maintenance : LED et Servo désactivés.')
+        publier({
+            "action": "led_off"
+            })
+        publier({
+            "action": "Servo_OFF",
+            })
 
-        # Petit bouton utilitaire
-        with ui.row().classes("w-full justify-end mt-3"):
-            ui.button("Clear log", on_click=lambda: setattr(log_area, "value", "")).classes(f"{BTN_DARK}")
+
+def publier(message: dict):
+    """Envoie un message JSON au Raspberry via MQTT."""
+    client.publish(MQTT_TOPIC, json.dumps(message))
+    print("Publié sur MQTT :", message)
+
+
+def Pression_boutton(numero: str):
+    global mode, mode_label
+    sortir_mode_maintenance()
+    mode = numero
+    print(f'Mode changé : {mode}')
+    # Mise à jour du label d'affichage du mode
+    mode_label.set_text(f'Mode actuel : {mode}')
+
+def start ():
+    ui.notify('Démarrage du processus !')
+    print(f'Processus démarré en mode : {mode} pour {temps_c} secondes.')
+
+    publier({
+        "action": "start",
+        "mode": mode,
+        "durée": temps_c  
+         })
+def stop ():
+    global mode
+    ui.notify('Processus arrêté !')
+    print('Processus arrêté.')
+    mode = "Aucun"
+    mode_label.set_text(f'Mode actuel : {mode}')
+    publier({
+        "action": "stop"
+         })
+
+def increment():
+    global temps_c
+    temps_c += 1
+    value_label.set_text(str(temps_c))
+
+def decrement():
+    global temps_c
+    if temps_c > 0:
+        temps_c -= 1
+        value_label.set_text(str(temps_c))
+def valeur_temps(value):
+    global temps_c
+    temps_c = value
+    value_label.set_text(str(temps_c))
+    return temps_c
+
+
+# Mise en page plein écran avec centrage du contenu
+with ui.row().classes('w-full h-screen'):
+    with ui.column().classes('absolute left-[50%] top-[35%] -translate-x-1/2 -translate-y-1/2'):
+
+        # Affichage du mode actuel
+
+        mode_label = ui.label(f'Mode actuel : {mode}').classes('text-xl')
+
+        # Première rangée de 2 boutons
+
+        with ui.row().classes():
+            ui.button('Vidange', on_click=lambda: Pression_boutton("vidange")).classes(Exemple_bouton)
+            ui.button('Séparation', on_click=lambda: (Pression_boutton("separation"), valeur_temps(30))).classes(Exemple_bouton)
+           
+
+        # Deuxième rangée de 2 boutons
+        with ui.row().classes():
+            ui.button('Chaos', on_click=lambda: Pression_boutton("ko")).classes(Exemple_bouton)
+            ui.button('Rassemblement', on_click=lambda: (Pression_boutton("rassemblement"), valeur_temps(30))).classes(Exemple_bouton)
+        
+
+        # boutons de maintenance en haut à droite
+    with ui.row().classes('absolute left-[90%] top-[40%] -translate-x-1/2 -translate-y-1/2 gap-5'):
+        with ui.row().classes():
+            ui.button('maintenance', on_click=lambda: Pression_boutton("maintenance")).classes(Exemple_bouton)
+            ui.button('reset', on_click=lambda: Pression_boutton("reset")).classes(Exemple_bouton)
+            btn_Servo_on = ui.button('Servo ouvert', on_click=lambda: toggle_Servo(True))\
+                    .classes(Exemple_bouton)
+            btn_Servo_off = ui.button('Servo fermé', on_click=lambda: toggle_Servo(False))\
+                    .classes(Exemple_bouton)
+            # indicateur (petit rond) sous le bouton
+            Servo_indicator = ui.element('div').classes('mt-2 w-16 h-16 rounded-full bg-gray-400')
+            update_Servo_ui()
+
+            btn_led_on = ui.button('LED ON', on_click=lambda: toggle_led(True))\
+                    .classes(Exemple_bouton)
+            btn_led_off = ui.button('LED OFF', on_click=lambda: toggle_led(False))\
+                    .classes(Exemple_bouton)
+
+            # indicateur (petit rond) sous le bouton
+            led_indicator = ui.element('div').classes('mt-2 w-16 h-16 rounded-full bg-gray-400')
+
+            update_led_ui()
+
+    with ui.column().classes('absolute left-[50%] top-[70%] -translate-x-1/2 -translate-y-1/2'):
+        # Zone d'affichage du chiffre et Boutons + et -
+        with ui.row().classes('gap-4'):
+            ui.button('-', on_click=decrement).classes('w-[60px] h-[60px] text-2xl')
+            value_label = ui.label(f'{temps_c}').classes('text-4xl font-bold')
+            ui.label('S').classes('text-4xl font-bold')
+            ui.button('+', on_click=increment).classes('w-[60px] h-[60px] text-2xl')
+    with ui.column().classes('absolute left-[50%] top-[57%] -translate-x-1/2 -translate-y-1/2'):
+        # Zone d'affichage du chiffre et Boutons + et -
+        with ui.row().classes('gap-4'):
+            ui.button('15s', on_click=lambda: valeur_temps(15)).classes(bouton_rond)
+            ui.button('30s', on_click=lambda: valeur_temps(30)).classes(bouton_rond)
+            ui.button('45s', on_click=lambda: valeur_temps(45)).classes(bouton_rond)
+            ui.button('60s', on_click=lambda: valeur_temps(60)).classes(bouton_rond)
+
+    # Bouton START en bas au centre
+
+    with ui.column().classes('absolute left-[50%] top-[85%] -translate-x-1/2 -translate-y-1/2'):
+        with ui.row().classes('gap-5'):
+            ui.button('Start', on_click=start).classes(Exemple_bouton)
+            ui.button('Stop', on_click=stop).classes(Exemple_bouton)
+
 
 ui.run()
+
+
